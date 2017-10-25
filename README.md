@@ -10,3 +10,5 @@ Research project - Keras implementation for large scale text classification mode
 ```
   python run_cnn.py --mode test --model_file models/keras_<time_stamp(1508937258)>.h5
 ```
+
+* The CNN model achieves accuracy of 87.7% in IMDB test dataset.
