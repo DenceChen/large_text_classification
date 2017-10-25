@@ -3,7 +3,7 @@ Research project - Keras implementation for large scale text classification mode
 
 ## 1. Train a model
 ```
-  python train_keras_imdb.py --mode train
+  python run_cnn.py --mode train
 ```
 
 ## 2. Test a model with saved weights
