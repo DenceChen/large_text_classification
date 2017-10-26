@@ -1,4 +1,4 @@
-import numpy as np
+import pprint
 import time
 import preprocessing
 import argparse
@@ -13,13 +13,16 @@ from sklearn.model_selection import train_test_split
 MAX_NB_WORDS = 100000  # only consider 10000 most commonly occuring words
 
 WORD2VEC_FILE = '/hdd/data/GoogleNews-vectors-negative300.bin'
+
 TRAIN_FILE_POS = "data/imdb/train/imdb_pos.txt"
 TRAIN_FILE_NEG = "data/imdb/train/imdb_neg.txt"
-TEST_FILE_POS = "data/imdb/test/imdb_pos.txt"
-TEST_FILE_NEG = "data/imdb/test/imdb_neg.txt"
 
 # TRAIN_FILE_POS = "data/rt-polaritydata/rt-polarity.pos"
 # TRAIN_FILE_NEG = "data/rt-polaritydata/rt-polarity.neg"
+
+TEST_FILE_POS = "data/imdb/test/imdb_pos.txt"
+TEST_FILE_NEG = "data/imdb/test/imdb_neg.txt"
+
 
 BATCH_SIZE = 64
 
@@ -29,9 +32,7 @@ EMBEDDING_DIM = 300
 
 DROPOUT_RATE = 0.5
 
-NUM_FILTERS = 128
-
-FILTER_SIZES = "3, 4, 5"
+HIDDEN_UNITS = 200
 
 PRE_TRAINED = False
 
@@ -57,7 +58,7 @@ def load_data(positive_data_file, negative_data_file):
 
 def create_word2vec_embedding(word_index, embedding_dim):
     miss_count = 0
-    embedding_matrix = np.zeros((len(word_index)+1, embedding_dim))
+    embedding_matrix = np.zeros((len(word_index) + 1, embedding_dim))
 
     print("loading wor2vec vectors...")
     word2vec_model = gensim.models.KeyedVectors.load_word2vec_format(WORD2VEC_FILE, binary=True)
@@ -80,22 +81,24 @@ def create_word2vec_embedding(word_index, embedding_dim):
 
     return embedding_matrix
 
+
 def create_random_embedding(word_index, embedding_dim):
-    embedding_matrix = np.random.rand(len(word_index)+1, embedding_dim)
+    embedding_matrix = np.random.rand(len(word_index) + 1, embedding_dim)
     return embedding_matrix
+
 
 def create_embedding_layer(pre_trained, word_index, embedding_dim, max_sequence_length):
     if pre_trained:
         embedding_matrix = create_word2vec_embedding(word_index, embedding_dim)
-        embedding_layer = Embedding(input_dim=len(word_index)+1,
+        embedding_layer = Embedding(input_dim=len(word_index) + 1,
                                     output_dim=embedding_dim,
                                     weights=[embedding_matrix],
                                     input_length=max_sequence_length,
-                                    trainable=True)     # non-static setting
+                                    trainable=True)  # non-static setting
 
     else:
         # embedding_matrix = create_random_embedding(word_index, embedding_dim)
-        embedding_layer = Embedding(input_dim=len(word_index)+1,
+        embedding_layer = Embedding(input_dim=len(word_index) + 1,
                                     output_dim=embedding_dim,
                                     input_length=max_sequence_length)
 
@@ -103,7 +106,7 @@ def create_embedding_layer(pre_trained, word_index, embedding_dim, max_sequence_
 
 
 def create_model_topology(embedding_layer, embedding_dim, filter_sizes, num_filters, max_sequence_length, num_labels=2):
-    sequence_input = Input(shape=(max_sequence_length, ), dtype='int32')
+    sequence_input = Input(shape=(max_sequence_length,), dtype='int32')
     embedding_sequences = embedding_layer(sequence_input)
 
     conv_blocks = []
@@ -131,27 +134,55 @@ def create_model_topology(embedding_layer, embedding_dim, filter_sizes, num_filt
 
     return model
 
+
+def create_lstm_topology(embedding_layer, embedding_dim, hidden_units, max_sequence_length, num_labels=2):
+    sequence_input = Input(shape=(max_sequence_length,), dtype='int32')
+    embedding_sequences = embedding_layer(sequence_input)
+
+    hidden = LSTM(hidden_units,
+                  dropout=0.2,
+                  recurrent_dropout=0.2,
+                  recurrent_activation='relu',
+                  input_shape=(None, 1))(embedding_sequences)
+
+    dropout = Dropout(args.dropout)(hidden)
+    preds = Dense(num_labels, activation='softmax')(dropout)
+
+    model = Model(sequence_input, preds)
+    model.compile(loss='binary_crossentropy',
+                  optimizer='adam',
+                  metrics=['acc'])
+
+    print(model.summary())
+
+    return model
+
+
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='CNN model for text classification')
-    parser.add_argument('--mode', dest='mode', action='store', required=False, default='train')
-    parser.add_argument('--num_filters', dest='num_filters', action='store', type=int, required=False, default=NUM_FILTERS)
-    parser.add_argument('--filter_sizes', dest='filter_sizes', action='store', required=False, default=FILTER_SIZES)
-    parser.add_argument('--batch_size', dest='batch_size', action='store', type=int, required=False, default=BATCH_SIZE)
-    parser.add_argument('--num_epochs', dest='num_epochs', action='store', type=int, required=False, default=NUM_EPOCHS)
-    parser.add_argument('--embedding_dim', dest='embedding_dim', action='store', type=int, required=False, default=EMBEDDING_DIM)
-    parser.add_argument('--dropout', dest='dropout', action='store', type=float, required=False, default=DROPOUT_RATE)
+    parser.add_argument('--mode', dest='mode', action='store', required=False,
+                        default='train')
+    parser.add_argument('--hidden_units', dest='hidden_units', action='store', type=int, required=False,
+                        default=HIDDEN_UNITS)
+    parser.add_argument('--batch_size', dest='batch_size', action='store', type=int, required=False,
+                        default=BATCH_SIZE)
+    parser.add_argument('--num_epochs', dest='num_epochs', action='store', type=int, required=False,
+                        default=NUM_EPOCHS)
+    parser.add_argument('--embedding_dim', dest='embedding_dim', action='store', type=int, required=False,
+                        default=EMBEDDING_DIM)
+    parser.add_argument('--dropout', dest='dropout', action='store', type=float, required=False,
+                        default=DROPOUT_RATE)
     parser.add_argument('--pre_trained', dest='pre_trained', action='store_true', required=False)
     parser.add_argument('--save_model', dest='save_model', action='store_true', required=False)
     parser.add_argument('--model_file', dest='model_file', action='store', required=False, default=None)
 
     args = parser.parse_args()
+    pprint.pprint(vars(args))
 
     assert args.mode == 'train' or args.mode == 'test'
     if args.mode == 'test':
         assert args.model_file is not None
-    filter_sizes = [int(size) for size in args.filter_sizes.split(",")]
-    assert len(filter_sizes) > 0
 
     # Load data
     sentences, labels = load_data(TRAIN_FILE_POS, TRAIN_FILE_NEG)
@@ -161,11 +192,8 @@ if __name__ == '__main__':
     tokenizer.fit_on_texts(sentences)
     print("Vocabulary size: %d" % len(tokenizer.word_index))
 
-    # max_sequence_length = max([len(sent.split(" ")) for sent in sentences])
-    # print("max sequence length: %d" % max_sequence_length)
-
     sequences = tokenizer.texts_to_sequences(sentences)
-    data = pad_sequences(sequences, maxlen=None, padding="post", truncating='post')  # Unlimited
+    data = pad_sequences(sequences, maxlen=None, padding="pre", truncating='post')  # Unlimited
     print("data shape: %s" % str(data.shape))
 
     max_sequence_length = data.shape[1]
@@ -180,12 +208,11 @@ if __name__ == '__main__':
                                              embedding_dim=args.embedding_dim,
                                              max_sequence_length=max_sequence_length)
 
-    model = create_model_topology(embedding_layer=embedding_layer,
-                                  embedding_dim=args.embedding_dim,
-                                  filter_sizes=filter_sizes,
-                                  num_filters=args.num_filters,
-                                  max_sequence_length=max_sequence_length,
-                                  num_labels=num_labels)
+    model = create_lstm_topology(embedding_layer=embedding_layer,
+                                 embedding_dim=args.embedding_dim,
+                                 hidden_units=args.hidden_units,
+                                 max_sequence_length=max_sequence_length,
+                                 num_labels=num_labels)
 
     # train the model or test
     if args.mode == 'train':
@@ -206,8 +233,8 @@ if __name__ == '__main__':
 
         if args.save_model:
             timestamp = str(int(time.time()))
-            model.save_weights('models/keras_cnn_%s.h5' % timestamp)
-            print("model saved at 'models/keras_cnn_%s.h5" % timestamp)
+            model.save_weights('models/keras_lstm_%s.h5' % timestamp)
+            print("model saved at 'models/keras_lstm_%s.h5" % timestamp)
 
     elif args.mode == 'test':
         # evaluation
@@ -215,7 +242,7 @@ if __name__ == '__main__':
         sentences, labels = load_data(TEST_FILE_POS, TEST_FILE_NEG)
 
         sequences = tokenizer.texts_to_sequences(sentences)
-        x_test = pad_sequences(sequences, maxlen=max_sequence_length, padding="post", truncating="post")  # Unlimited
+        x_test = pad_sequences(sequences, maxlen=None, padding="pre", truncating="post")  # Unlimited
         y_test = labels
 
         model.load_weights(args.model_file)
